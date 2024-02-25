@@ -1,0 +1,59 @@
+{% macro render_single_sample(sample, labels) -%}
+{{sample.instruction}}
+
+{{labels.statement}}: """{{sample.sample.statement}}"""
+
+{{labels.clinical_trial}}: """
+  {{sample.primary_ct_section_str}}
+"""
+
+{{ caller() }}
+{%- endmacro %}
+{% macro render_comparison_sample(sample, labels) -%}
+{{sample.instruction}}
+
+{{labels.statement}}: """{{sample.sample.statement}}"""
+
+{{labels.primary_clinical_trial}}: """
+  {{sample.primary_ct_section_str}}
+"""
+
+{{labels.secondary_clinical_trial}}: """
+  {{sample.secondary_ct_section_str}}
+"""
+
+{{ caller() }}
+{%- endmacro %}
+<s>
+[INST]
+Solve the problem in the same format as in the following examples.
+Examples:
+{% for demo_sample in model.demo_samples %}
+  {% if demo_sample.sample.type == "Single" %}
+{% call render_single_sample(demo_sample, model.labels) %}
+[/INST]
+
+{ "answer": "{{demo_sample.sample.label}}" }
+{% endcall %}
+  {% else %}
+{% call render_comparison_sample(demo_sample, model.labels) %}
+[/INST]
+
+{ "answer": "{{demo_sample.sample.label}}" }
+{% endcall %}
+  {% endif %}
+  {% if not loop.last %}
+[INST]
+  {%- endif %}
+{% endfor %}
+
+</s>
+
+[INST]
+Problem:
+{% if model.new_problem.sample.type == "Single" %}
+  {% call render_single_sample(model.new_problem, model.labels) %}{% endcall %}
+{% else %}
+  {% call render_comparison_sample(model.new_problem, model.labels) %}{% endcall %}
+{% endif %}
+[/INST]

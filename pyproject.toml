@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "tutorial"
+name = "semeval"
 version = "0.1.0"
 description = "Dagster tuto"
 authors = ["Clément Brutti-Mairesse <clement.bruttimairesse@unicancer.fr>"]
@@ -22,10 +22,12 @@ pip-system-certs = "^4.0"
 pandas = "<2.1"
 faker = "18.4.0"
 dagster-webserver = "^1.6.5"
+together = "^0.2.11"
+torch = "^2.2.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.dagster]
-module_name = "tutorial"
+module_name = "semeval"

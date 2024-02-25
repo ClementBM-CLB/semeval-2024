@@ -1,0 +1,42 @@
+{% macro render_single_sample(sample, labels) -%}
+{{sample.instruction}}
+Answer in JSON format:
+
+{ "answer": "" }
+
+{{labels.statement}}: """{{sample.sample.statement}}"""
+
+{{labels.clinical_trial}}:
+"""
+{{sample.primary_ct_section_str}}
+"""
+
+{{ caller() }}
+{%- endmacro %}
+{% macro render_comparison_sample(sample, labels) -%}
+{{sample.instruction}}
+Answer in JSON format:
+
+{ "answer": "" }
+
+{{labels.statement}}: """{{sample.sample.statement}}"""
+
+{{labels.primary_clinical_trial}}:
+"""
+{{sample.primary_ct_section_str}}
+"""
+
+{{labels.secondary_clinical_trial}}:
+"""
+{{sample.secondary_ct_section_str}}
+"""
+
+{{ caller() }}
+{%- endmacro %}
+[INST]
+{% if model.sample.sample.type == "Single" %}
+{% call render_single_sample(model.sample, model.labels) %}{% endcall %}
+{% else %}
+{% call render_comparison_sample(model.sample, model.labels) %}{% endcall %}
+{% endif %}
+[/INST]

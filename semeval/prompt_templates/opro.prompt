@@ -1,0 +1,60 @@
+{% macro render_single_sample(sample, labels) -%}{{ caller() }}
+<INS>
+
+{{labels.statement}}: """{{sample.statement}}"""
+
+{{labels.clinical_trial}}: """
+  {{sample.primary_ct_section_str}}
+"""
+
+[/INST]
+
+{ "answer": "{{sample.label}}" }
+{%- endmacro %}
+{% macro render_comparison_sample(sample, labels) -%}{{ caller() }}
+<INS>
+
+{{labels.statement}}: """{{sample.statement}}"""
+
+{{labels.primary_clinical_trial}}: """
+  {{sample.primary_ct_section_str}}
+"""
+
+{{labels.secondary_clinical_trial}}: """
+  {{sample.secondary_ct_section_str}}
+"""
+
+[/INST]
+
+{ "answer": "{{sample.label}}" }
+{%- endmacro %}
+<s>
+[INST]
+Your task is to generate the instruction <INS>. Below are some previous instructions with their scores.
+The score ranges from 0 to 100.
+
+{% for instruction_score in model.instruction_scores %}
+text:
+{{instruction_score.instruction}}
+score:
+{{instruction_score.score}}
+{% endfor %}
+
+Below are some problems.
+Problem:
+{% for sample in model.samples %}
+  {% if sample.type == "Single" %}
+{% call render_single_sample(sample, model.labels) %}{% endcall %}
+  {% else %}
+{% call render_comparison_sample(sample, model.labels) %}{% endcall %}
+  {% endif %}
+  {% if not loop.last %}
+[INST]
+  {%- endif %}
+{% endfor %}
+</s>
+[INST]
+Generate an instruction that is different from all the instructions <INS> above, and has a higher score
+than all the instructions <INS> above. The instruction should begin with <INS> and end with </INS>.
+The instruction should be concise, effective, and generally applicable to all problems above
+[/INST]
