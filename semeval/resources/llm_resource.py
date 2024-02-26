@@ -1,16 +1,11 @@
 # mypy: ignore-errors
 
-import gzip
-import json
-from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from abc import abstractmethod
 import typing
+from retrying import retry
 
-import requests
 import together
 from dagster import ConfigurableResource
-from dagster._utils import file_relative_path
-from dagster._utils.cached_method import cached_method
 
 
 class ChatMessageModel:
@@ -75,6 +70,7 @@ class LanguageModel(ConfigurableResource):
             "prompt_tokens": 0,
         }
 
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def generate_prediction(self, prompt: ChatMessageModel, max_new_tokens):
         return self.call(
             prompt=self.prompt_template.build_prompt(prompt),

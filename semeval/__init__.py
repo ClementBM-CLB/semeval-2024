@@ -12,16 +12,18 @@ from dagster import (
 )
 
 from semeval.resources import llm_client
-from semeval.assets import llm_test, hn_news
+from semeval.assets import llm_test
 
-all_assets = load_assets_from_modules([llm_test, hn_news])
+all_assets = load_assets_from_modules([llm_test])
 
-# Addition: define a job that will materialize the assets
-hackernews_job = define_asset_job("hackernews_job", selection=AssetSelection.all())
+llm_job = define_asset_job(
+    name="llm_reformulate",
+    selection=AssetSelection.groups("llm"),
+)
 
 # Addition: a ScheduleDefinition the job it should run and a cron schedule of how frequently to run it
-hackernews_schedule = ScheduleDefinition(
-    job=hackernews_job,
+llm_schedule = ScheduleDefinition(
+    job=llm_job,
     cron_schedule="0 * * * *",  # every hour
 )
 
@@ -31,8 +33,10 @@ io_manager = FilesystemIOManager(
 
 defs = Definitions(
     assets=all_assets,
-    schedules=[
-        hackernews_schedule
-    ],  # Addition: add the job to Definitions object (see below)
-    resources={"io_manager": io_manager, "llm_client": llm_client},
+    schedules=[llm_schedule],  # Addition: add the job to Definitions object (see below)
+    jobs=[llm_job],
+    resources={
+        "io_manager": io_manager,
+        "llm_client": llm_client,
+    },
 )
