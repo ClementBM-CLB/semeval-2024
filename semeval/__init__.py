@@ -28,7 +28,7 @@ llm_schedule = ScheduleDefinition(
 )
 
 io_manager = FilesystemIOManager(
-    base_dir="data",  # Path is built relative to where `dagster dev` is run
+    base_dir="artifacts/data",  # Path is built relative to where `dagster dev` is run
 )
 
 defs = Definitions(

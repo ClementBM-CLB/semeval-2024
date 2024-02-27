@@ -39,13 +39,19 @@ def semeval2024_data(
     ctr_dict = load_clinical_trials()
     data = load_data(name=config.name)
 
-    dataset = SemEvalDataset(dataset=data, clinical_trials=ctr_dict, is_labelized=True)
+    is_labelized = True
+    if config.name == "test":
+        is_labelized = False
+
+    dataset = SemEvalDataset(
+        dataset=data, clinical_trials=ctr_dict, is_labelized=is_labelized
+    )
 
     samples = pd.DataFrame.from_records(x.dict() for x in dataset)
 
     context.add_output_metadata(
         metadata={
-            "samples": MetadataValue.md(samples.to_markdown()),
+            "samples": MetadataValue.md(samples.head().to_markdown()),
         }
     )
 
@@ -102,7 +108,7 @@ def reformulate(
 
     context.add_output_metadata(
         metadata={
-            "samples": MetadataValue.md(reformulate_samples.to_markdown()),
+            "samples": MetadataValue.md(reformulate_samples.head().to_markdown()),
         },
         output_name="result_samples",
     )
@@ -210,7 +216,7 @@ def prediction(
 
     context.add_output_metadata(
         metadata={
-            "predictions": MetadataValue.md(predictions.to_markdown()),
+            "predictions": MetadataValue.md(predictions.head().to_markdown()),
         }
     )
 
