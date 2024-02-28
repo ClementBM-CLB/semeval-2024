@@ -12,9 +12,9 @@ from dagster import (
 )
 
 from semeval.resources import llm_client
-from semeval.assets import llm_test
+from semeval.assets import reformulate_and_predict
 
-all_assets = load_assets_from_modules([llm_test])
+all_assets = load_assets_from_modules([reformulate_and_predict])
 
 llm_job = define_asset_job(
     name="llm_reformulate",

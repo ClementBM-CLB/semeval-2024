@@ -2,6 +2,7 @@
 import os
 import time
 import typing
+from itertools import islice
 
 from dagster import (
     AssetExecutionContext,
@@ -25,17 +26,21 @@ from semeval.resources.llm_resource import ChatMessageModel, TogetherPromptModel
 from semeval.semeval_dataset import SemEvalDataset, load_clinical_trials, load_data
 from semeval.semeval_schemas import SemEvalSample
 
+REFORMULATION_AND_PREDICT_GROUP = "reformulation_and_predict"
+
 
 class DatasetConfig(Config):
     name: str = Field(
         default="dev", description="Dataset split name: train, dev, or test"
     )
+    top_k: int = Field(default=10, description="Take top k sample from the dataset")
 
 
-@asset(group_name="llm")
+@asset(group_name=REFORMULATION_AND_PREDICT_GROUP)
 def semeval2024_data(
-    context: AssetExecutionContext, config: DatasetConfig
-) -> SemEvalDataset:
+    context: AssetExecutionContext,
+    config: DatasetConfig,
+) -> typing.List[SemEvalSample]:
     ctr_dict = load_clinical_trials()
     data = load_data(name=config.name)
 
@@ -44,7 +49,9 @@ def semeval2024_data(
         is_labelized = False
 
     dataset = SemEvalDataset(
-        dataset=data, clinical_trials=ctr_dict, is_labelized=is_labelized
+        dataset=data,
+        clinical_trials=ctr_dict,
+        is_labelized=is_labelized,
     )
 
     samples = pd.DataFrame.from_records(x.dict() for x in dataset)
@@ -55,11 +62,11 @@ def semeval2024_data(
         }
     )
 
-    return dataset
+    return list(islice(dataset, config.top_k))
 
 
 @multi_asset(
-    group_name="llm",
+    group_name=REFORMULATION_AND_PREDICT_GROUP,
     outs={
         "result_samples": AssetOut(),
         "chat_messages": AssetOut(),
@@ -68,7 +75,7 @@ def semeval2024_data(
 def reformulate(
     context: AssetExecutionContext,
     llm_client: TogetherPromptModel,
-    semeval2024_data: SemEvalDataset,
+    semeval2024_data: typing.List[SemEvalSample],
 ):
     prompter = PromptConfig(prompt_type="reformulate").build()
     prompt_arguments = {
@@ -79,7 +86,6 @@ def reformulate(
 
     output_parser = OutputParserConfig(element_name="statement", format="json").build()
 
-    i = 0
     result_samples = []
     chat_messages = []
     for sample in semeval2024_data:
@@ -97,12 +103,8 @@ def reformulate(
 
         sample.statement = casted_prediction["statement"]
 
-        i += 1
         result_samples.append(sample)
         chat_messages.append(chat_message)
-
-        if i > 5:
-            break
 
     reformulate_samples = pd.DataFrame.from_records(x.dict() for x in result_samples)
 
@@ -157,7 +159,7 @@ Do not explain or elaborate and do not mention the term "statement" or "trial". 
 
 
 @asset(
-    group_name="llm",
+    group_name=REFORMULATION_AND_PREDICT_GROUP,
     ins={
         "result_samples": AssetIn(key="result_samples"),
         "chat_messages": AssetIn(key="chat_messages"),
@@ -205,8 +207,6 @@ def prediction(
         chat_message.add_model_reply(prediction)
 
         casted_prediction = output_parser.parse(prediction)
-
-        context.log.info(prediction)
 
         result_predictions.append(casted_prediction["answer"])
 

@@ -2,7 +2,6 @@
 
 from abc import abstractmethod
 import typing
-from retrying import retry
 
 import together
 from dagster import ConfigurableResource
@@ -70,7 +69,6 @@ class LanguageModel(ConfigurableResource):
             "prompt_tokens": 0,
         }
 
-    @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def generate_prediction(self, prompt: ChatMessageModel, max_new_tokens):
         return self.call(
             prompt=self.prompt_template.build_prompt(prompt),

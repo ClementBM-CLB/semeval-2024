@@ -59,7 +59,7 @@ class SemEvalDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-    def __getitem__(self, idx: str) -> SemEvalSample:
+    def __getitem__(self, idx: int) -> SemEvalSample:
         inference = self.dataset[idx]
 
         section = inference["Section_id"]
