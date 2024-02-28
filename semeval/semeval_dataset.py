@@ -60,25 +60,25 @@ class SemEvalDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx: int) -> SemEvalSample:
-        inference = self.dataset[idx]
+        sample = self.dataset[idx]
 
-        section = inference["Section_id"]
+        section = sample["Section_id"]
 
-        primary_ctr = self.clinical_trials[inference["Primary_id"]]
+        primary_ctr = self.clinical_trials[sample["Primary_id"]]
 
-        if inference["Type"] == "Comparison":
-            secondary_ctr = self.clinical_trials[inference["Secondary_id"]]
+        if sample["Type"] == "Comparison":
+            secondary_ctr = self.clinical_trials[sample["Secondary_id"]]
 
         return SemEvalSample(
             **{
-                "key": inference["Key"],
-                "type": inference["Type"],
-                "section": inference["Section_id"],
-                "statement": inference["Statement"],
+                "key": sample["Key"],
+                "type": sample["Type"],
+                "section": sample["Section_id"],
+                "statement": sample["Statement"],
                 "primary_ct_section": primary_ctr[section],
                 "secondary_ct_section": (
-                    secondary_ctr[section] if "Secondary_id" in inference else []
+                    secondary_ctr[section] if "Secondary_id" in sample else []
                 ),
-                "label": inference["Label"] if self.is_labelized else "NA",
+                "label": sample["Label"] if self.is_labelized else "NA",
             }
         )
