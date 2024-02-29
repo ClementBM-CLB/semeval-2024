@@ -1,5 +1,4 @@
 # mypy: ignore-errors
-import os
 import time
 import typing
 from itertools import islice
@@ -17,112 +16,23 @@ from dagster import (
     asset,
 )
 from pydantic import Field
-from semeval.assets.data_processing import define_cast_prediction
 from semeval.output_parser import OutputParserConfig
 from semeval.prompt_manager import PromptConfig
 import pandas as pd
-from semeval.prompt_templates.labels import SemEvalLabels
 
+from semeval.prompt_templates.labels import SemEvalLabels
 from semeval.resources.llm_resource import ChatMessageModel, TogetherPromptModel
+from semeval.assets.data_processing import define_cast_prediction
 from semeval.semeval_schemas import SemEvalSample
 
-REFORMULATION_GROUP = "Reformulate"
+SYNTHETIC_COT_ZEROSHOT_GROUP = "Synthetic_Chain_Of_Thought"
 
 
-class ReformulatePromptConfig(Config):
+class CoTPromptConfig(Config):
     system_prompt: str = Field(
         default="",
         description="System prompt",
     )
-
-
-@asset(group_name=REFORMULATION_GROUP)
-def reformulate(
-    context: AssetExecutionContext,
-    config: ReformulatePromptConfig,
-    llm_client: TogetherPromptModel,
-    semeval2024_data: typing.List[SemEvalSample],
-) -> typing.Dict[str, ChatMessageModel]:
-    prompter = PromptConfig(prompt_type="reformulate").build()
-    prompt_arguments = {
-        "instruction": "Please reformulate the following hypothesis:",
-        "format_instruction": """Answer in JSON format:\n\n{ "statement": "" }""",
-    }
-
-    chat_messages = {}
-
-    for sample in semeval2024_data:
-        chat_message = ChatMessageModel(system_prompt=config.system_prompt)
-
-        message = prompter.build(**(prompt_arguments | {"problem_sample": sample}))
-
-        chat_message.add_user_message(message)
-        prediction = llm_client.generate_prediction(chat_message, max_new_tokens=128)
-        time.sleep(3)
-
-        chat_message.add_model_reply(prediction)
-        chat_messages[sample.key] = chat_message
-
-    chat_message_df = pd.DataFrame.from_records(
-        [x.dict() for x in chat_messages.values()]
-    )
-
-    context.add_output_metadata(
-        metadata={
-            "chat messages": MetadataValue.md(chat_message_df.head().to_markdown()),
-        },
-    )
-
-    return chat_messages
-
-
-@asset(group_name=REFORMULATION_GROUP)
-def cast_reformulation(
-    context: AssetExecutionContext,
-    reformulate: typing.Dict[str, ChatMessageModel],
-    semeval2024_data: typing.List[SemEvalSample],
-) -> typing.List[SemEvalSample]:
-    output_parser = OutputParserConfig(element_name="statement", format="json").build()
-
-    for sample in semeval2024_data:
-        raw_prediction = reformulate[sample.key].get_last_model_reply()
-        casted_prediction = output_parser.parse(raw_prediction)
-
-        sample.statement = casted_prediction["statement"]
-
-    sample_df = pd.DataFrame.from_records([x.model_dump() for x in semeval2024_data])
-
-    context.add_output_metadata(
-        metadata={
-            "samples": MetadataValue.md(sample_df.head().to_markdown()),
-        }
-    )
-
-    return semeval2024_data
-
-
-class OpPromptConfig(Config):
-    system_prompt: str = Field(
-        default="",
-        description="System prompt",
-    )
-    single_instruction: str = Field(
-        default="""
-Given a clinical trial and a statement, determine whether the statement logically follows from the clinical trial.
-If the statement logically follows from the clinical trial, you need to return "Entailment". If not, you need to return "Contradiction".
-Do not explain or elaborate and do not mention the term "statement" or "trial". If you are unable to extract the information, write "N-A".
-""",
-        description="Single instruction",
-    )
-    comparison_instruction: str = Field(
-        default="""
-Given two clinical trials and a statement, determine whether the statement logically follows from the clinical trials.
-If the statement logically follows from the clinical trials, you need to return "Entailment". If not, you need to return "Contradiction".
-Do not explain or elaborate and do not mention the term "statement" or "trial". If you are unable to extract the information, write "N-A".
-""",
-        description="Comparison instruction",
-    )
-
     clinical_trial_label: str = Field(
         default="Clinical trial report",
         description="unique ctr label",
@@ -139,21 +49,21 @@ Do not explain or elaborate and do not mention the term "statement" or "trial". 
         default="Statement",
         description="statement label",
     )
+    instruction: str = Field(
+        default="Let's generate a chain of thought explanation",
+        description="Chain of Thought instruction",
+    )
+    max_tokens: int = Field(default=512, description="Max tokens generation")
 
 
-@asset(
-    name="prediction",
-    group_name=REFORMULATION_GROUP,
-    key_prefix=[REFORMULATION_GROUP],
-)
-def reformulate_zeroshot_prediction(
+@asset(group_name=SYNTHETIC_COT_ZEROSHOT_GROUP)
+def synthetic_cot(
     context: AssetExecutionContext,
-    config: OpPromptConfig,
+    config: CoTPromptConfig,
     llm_client: TogetherPromptModel,
-    cast_reformulation: typing.List[SemEvalSample],
+    semeval2024_data: typing.List[SemEvalSample],
 ) -> typing.Dict[str, ChatMessageModel]:
 
-    prompter = PromptConfig(prompt_type="zeroshot").build()
     semeval_labels = SemEvalLabels(
         clinical_trial=config.clinical_trial_label,
         primary_clinical_trial=config.primary_clinical_trial_label,
@@ -161,27 +71,27 @@ def reformulate_zeroshot_prediction(
         statement=config.statement_label,
     )
 
+    prompter = PromptConfig(prompt_type="cot").build()
     prompt_arguments = {
-        "instructions": {
-            "Single": config.single_instruction,
-            "Comparison": config.comparison_instruction,
-        },
+        "system_prompt": None,
+        "instruction": config.instruction,
         "labels": semeval_labels,
     }
 
     chat_messages = {}
 
-    for sample in cast_reformulation:
-        chat_message = ChatMessageModel(system_prompt=config.system_prompt)
+    for sample in semeval2024_data:
+        chat_message = ChatMessageModel()
 
         message = prompter.build(**(prompt_arguments | {"problem_sample": sample}))
         chat_message.add_user_message(message)
+        prediction = llm_client.generate_prediction(
+            chat_message, max_new_tokens=config.max_tokens
+        )
 
-        prediction = llm_client.generate_prediction(chat_message, max_new_tokens=64)
         time.sleep(3)
 
         chat_message.add_model_reply(prediction)
-
         chat_messages[sample.key] = chat_message
 
     chat_message_df = pd.DataFrame.from_records(
@@ -197,7 +107,102 @@ def reformulate_zeroshot_prediction(
     return chat_messages
 
 
-reformulate_zeroshot_cast_prediction = define_cast_prediction(
+SEMEVAL_FORMAT_INSTRUCTION = """
+* Return "Entailment" if the hypothesis is supported by the clinical trial report.
+* Return "Contradiction" if the hypothesis refuted by the clinical trial report.
+* Return "Insufficient Information"  if the clinical trial report does not provide enough information to evaluate the hypothesis.
+
+Answer in JSON format:
+
+{ "answer": "" }
+
+Therefore, the answer is """
+
+
+class ZeroShotPromptConfig(Config):
+    system_prompt: str = Field(
+        default="",
+        description="System prompt",
+    )
+    clinical_trial_label: str = Field(
+        default="Clinical trial report",
+        description="unique ctr label",
+    )
+    primary_clinical_trial_label: str = Field(
+        default="Primary clinical trial report",
+        description="primary ctr label",
+    )
+    secondary_clinical_trial_label: str = Field(
+        default="Secondary clinical trial report",
+        description="secondary ctr label",
+    )
+    statement_label: str = Field(
+        default="Statement",
+        description="statement label",
+    )
+    instruction: str = Field(
+        default=SEMEVAL_FORMAT_INSTRUCTION, description="format instruction"
+    )
+
+
+@asset(
+    name="prediction",
+    group_name=SYNTHETIC_COT_ZEROSHOT_GROUP,
+    key_prefix=[SYNTHETIC_COT_ZEROSHOT_GROUP],
+)
+def cot_zeroshot_prediction(
+    context: AssetExecutionContext,
+    config: ZeroShotPromptConfig,
+    llm_client: TogetherPromptModel,
+    synthetic_cot: typing.Dict[str, ChatMessageModel],
+    semeval2024_data: typing.List[SemEvalSample],
+) -> typing.Dict[str, ChatMessageModel]:
+
+    prompter = PromptConfig(prompt_type="zeroshot").build()
+    semeval_labels = SemEvalLabels(
+        clinical_trial=config.clinical_trial_label,
+        primary_clinical_trial=config.primary_clinical_trial_label,
+        secondary_clinical_trial=config.secondary_clinical_trial_label,
+        statement=config.statement_label,
+    )
+
+    prompt_arguments = {
+        "system_prompt": config.system_prompt,
+        "instructions": {
+            "Single": config.instruction,
+            "Comparison": config.instruction,
+        },
+        "labels": semeval_labels,
+    }
+
+    chat_messages = {}
+
+    for sample in semeval2024_data:
+        chat_message = synthetic_cot[sample.key]
+
+        message = prompter.build(**(prompt_arguments | {"problem_sample": sample}))
+        chat_message.add_user_message(message)
+
+        prediction = llm_client.generate_prediction(chat_message, max_new_tokens=64)
+        time.sleep(3)
+
+        chat_message.add_model_reply(prediction)
+        chat_messages[sample.key] = chat_message
+
+    chat_message_df = pd.DataFrame.from_records(
+        [x.dict() for x in chat_messages.values()]
+    )
+
+    context.add_output_metadata(
+        metadata={
+            "chat_messages": MetadataValue.md(chat_message_df.head().to_markdown()),
+        }
+    )
+
+    return chat_messages
+
+
+cot_zeroshot_cast_prediction = define_cast_prediction(
     name="cast_prediction",
-    group_name=REFORMULATION_GROUP,
+    group_name=SYNTHETIC_COT_ZEROSHOT_GROUP,
 )

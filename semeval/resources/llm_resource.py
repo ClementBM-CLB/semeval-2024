@@ -9,13 +9,16 @@ from dagster import ConfigurableResource
 
 class ChatMessageModel:
     def __init__(
-        self, system_prompt=None, user_message_history=[], model_replies_history=[]
+        self, system_prompt=None, user_message_history=None, model_replies_history=None
     ):
-        assert len(user_message_history) == len(model_replies_history)
-
         self.system_prompt = system_prompt
-        self.user_messages = user_message_history
-        self.model_replies = model_replies_history
+        self.user_messages = (
+            user_message_history if user_message_history is not None else []
+        )
+        self.model_replies = (
+            model_replies_history if model_replies_history is not None else []
+        )
+        assert len(self.user_messages) == len(self.model_replies)
 
     def add_user_message(self, message: str):
         self.user_messages.append(message)
@@ -31,11 +34,23 @@ class ChatMessageModel:
     def get_model_replies(self, strip=True):
         return [x.strip() for x in self.model_replies] if strip else self.model_replies
 
+    def get_last_model_reply(self, strip=True):
+        if strip:
+            return self.model_replies[-1].strip()
+        return self.model_replies[-1]
+
     def _is_valid(self):
         if len(self.user_messages) != len(self.model_replies) + 1:
             raise ValueError(
                 "Error: Expected len(user_messages) = len(model_replies) + 1. Add a new user message!"
             )
+
+    def dict(self):
+        return {
+            "system_prompt": self.system_prompt,
+            "user_messages": self.user_messages,
+            "model_replies": self.model_replies,
+        }
 
 
 class PromptTemplateBase(ConfigurableResource):

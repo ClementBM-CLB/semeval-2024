@@ -28,6 +28,8 @@ class PromptConfig(BaseModel):
                 return ZeroShotPrompt()
             case "reformulate":
                 return ReformulatePrompt()
+            case "cot":
+                return ChainOfToughtPrompt()
             case _:
                 raise Exception("Unknown prompt type")
 
@@ -155,3 +157,25 @@ class ReformulatePrompt(PromptBase):
             instruction=model["instruction"],
             format_instruction=model["format_instruction"],
         )
+
+
+class ChainOfToughtPrompt(PromptBase):
+    def __init__(self):
+        super().__init__("chainofthought.prompt")
+
+    def create_model(
+        self,
+        problem_sample: SemEvalSample,
+        labels: SemEvalLabels,
+        instruction: str,
+        **kwargs,
+    ):
+        return ChainofThoughtsModel(
+            sample=problem_sample,
+            instruction=instruction,
+            labels=labels,
+        )
+
+    def build(self, *args, **kwargs):
+        model = self.create_model(**kwargs)
+        return self.template.render(model=model)
