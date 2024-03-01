@@ -52,6 +52,18 @@ class ChatMessageModel:
             "model_replies": self.model_replies,
         }
 
+    def __str__(self) -> str:
+        return "\n======================\n".join(
+            [
+                "System Prompt",
+                self.system_prompt if self.system_prompt else "Null",
+                "User messages",
+                "\n---------------------\n".join(self.user_messages),
+                "Model replies",
+                "\n---------------------\n".join(self.model_replies),
+            ]
+        )
+
 
 class PromptTemplateBase(ConfigurableResource):
     @abstractmethod

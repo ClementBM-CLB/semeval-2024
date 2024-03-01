@@ -25,7 +25,7 @@ def define_cast_prediction(name, group_name):
         context: AssetExecutionContext,
         prediction: typing.Dict[str, ChatMessageModel],
         semeval2024_data: typing.List[SemEvalSample],
-    ):
+    ) -> typing.List[dict]:
         output_parser = OutputParserConfig(element_name="answer", format="json").build()
         predictions = []
 
@@ -35,7 +35,11 @@ def define_cast_prediction(name, group_name):
 
             predictions.append(
                 {
-                    "casted_prediction": casted_prediction["answer"],
+                    "casted_prediction": (
+                        casted_prediction["answer"]
+                        if "answer" in casted_prediction
+                        else "N-A"
+                    ),
                     "raw_prediction": raw_prediction,
                 }
                 | sample.model_dump()

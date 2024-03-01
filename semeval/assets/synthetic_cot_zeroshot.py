@@ -1,7 +1,7 @@
 # mypy: ignore-errors
+import json
 import time
 import typing
-from itertools import islice
 
 from dagster import (
     AssetExecutionContext,
@@ -16,13 +16,16 @@ from dagster import (
     asset,
 )
 from pydantic import Field
+from artifacts import EXPERIMENT_FOLDER
 from semeval.output_parser import OutputParserConfig
 from semeval.prompt_manager import PromptConfig
 import pandas as pd
+import mlflow
 
 from semeval.prompt_templates.labels import SemEvalLabels
 from semeval.resources.llm_resource import ChatMessageModel, TogetherPromptModel
 from semeval.assets.data_processing import define_cast_prediction
+from semeval.semeval_metrics import PromptMetrics
 from semeval.semeval_schemas import SemEvalSample
 
 SYNTHETIC_COT_ZEROSHOT_GROUP = "Synthetic_Chain_Of_Thought"
@@ -157,31 +160,11 @@ def cot_zeroshot_prediction(
     synthetic_cot: typing.Dict[str, ChatMessageModel],
     semeval2024_data: typing.List[SemEvalSample],
 ) -> typing.Dict[str, ChatMessageModel]:
-
-    prompter = PromptConfig(prompt_type="zeroshot").build()
-    semeval_labels = SemEvalLabels(
-        clinical_trial=config.clinical_trial_label,
-        primary_clinical_trial=config.primary_clinical_trial_label,
-        secondary_clinical_trial=config.secondary_clinical_trial_label,
-        statement=config.statement_label,
-    )
-
-    prompt_arguments = {
-        "system_prompt": config.system_prompt,
-        "instructions": {
-            "Single": config.instruction,
-            "Comparison": config.instruction,
-        },
-        "labels": semeval_labels,
-    }
-
     chat_messages = {}
 
     for sample in semeval2024_data:
         chat_message = synthetic_cot[sample.key]
-
-        message = prompter.build(**(prompt_arguments | {"problem_sample": sample}))
-        chat_message.add_user_message(message)
+        chat_message.add_user_message(config.instruction)
 
         prediction = llm_client.generate_prediction(chat_message, max_new_tokens=64)
         time.sleep(3)
@@ -206,3 +189,63 @@ cot_zeroshot_cast_prediction = define_cast_prediction(
     name="cast_prediction",
     group_name=SYNTHETIC_COT_ZEROSHOT_GROUP,
 )
+
+
+# mlflow server --host 127.0.0.1 --port 8894
+@asset(
+    name="evaluate",
+    group_name=SYNTHETIC_COT_ZEROSHOT_GROUP,
+    key_prefix=[SYNTHETIC_COT_ZEROSHOT_GROUP],
+)
+def evaluate(
+    context: AssetExecutionContext,
+    cast_prediction: typing.List[dict],
+    prediction: typing.Dict[str, ChatMessageModel],
+):
+    mlflow.set_tracking_uri(uri="http://127.0.0.1:8894")
+
+    # set the experiment id
+    mlflow.set_experiment("SemEval2024")
+
+    # start a run
+    with mlflow.start_run():
+        result_df = pd.DataFrame.from_records(cast_prediction)
+        result_df["is_accurate"] = result_df["label"] == result_df["casted_prediction"]
+
+        for i, row in result_df.iterrows():
+            if not EXPERIMENT_FOLDER.exists():
+                EXPERIMENT_FOLDER.mkdir()
+
+            file_path = EXPERIMENT_FOLDER / f"{row['is_accurate']}-{row['key']}.txt"
+            with open(file_path, mode="w") as file_writer:
+
+                chat_message = prediction[row["key"]]
+                file_writer.write(str(chat_message))
+
+                file_writer.write("\n\n# Casted prediction\n\n")
+                file_writer.write(row["casted_prediction"])
+                file_writer.write("\n\n# True label\n\n")
+                file_writer.write(row["label"])
+
+            mlflow.log_artifact(local_path=file_path, artifact_path="prompts")
+            mlflow.log_metric(
+                key="guid_" + row["key"].replace("-", "_"), value=row["is_accurate"]
+            )
+
+        # mlflow.log_input(dataset=dev_dataset, context="training")
+
+        prompt_metrics = PromptMetrics(cast_prediction)
+
+        experiment_scores = prompt_metrics.evaluate()
+
+        mlflow.log_metrics(experiment_scores)
+        context.add_output_metadata(metadata=experiment_scores)
+        # mlflow.log_metrics(experiment.model.token_usage)
+
+        mlflow.log_params(
+            {
+                "sample_count": prompt_metrics.total_length,
+                # "model": model_path,
+                # "max_new_tokens": max_new_tokens,
+            }
+        )
