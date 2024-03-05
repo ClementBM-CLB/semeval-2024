@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "semeval"
 version = "0.1.0"
-description = "Dagster tuto"
+description = "Semeval 2024 task 2"
 authors = ["Clément Brutti-Mairesse <clement.bruttimairesse@unicancer.fr>"]
 license = "MIT"
 readme = "README.md"
