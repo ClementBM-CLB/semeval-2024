@@ -1,5 +1,4 @@
 import typing
-from itertools import islice
 from pydantic import Field
 import pandas as pd
 

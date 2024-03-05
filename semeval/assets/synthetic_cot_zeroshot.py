@@ -1,23 +1,15 @@
 # mypy: ignore-errors
-import json
 import time
 import typing
 
 from dagster import (
     AssetExecutionContext,
-    AssetIn,
-    AssetOut,
-    AssetsDefinition,
-    MaterializeResult,
     Config,
-    Output,
-    multi_asset,
     MetadataValue,
     asset,
 )
 from pydantic import Field
 from artifacts import EXPERIMENT_FOLDER
-from semeval.output_parser import OutputParserConfig
 from semeval.prompt_manager import PromptConfig
 import pandas as pd
 import mlflow
@@ -59,14 +51,14 @@ class CoTPromptConfig(Config):
     max_tokens: int = Field(default=512, description="Max tokens generation")
 
 
-@asset(group_name=SYNTHETIC_COT_ZEROSHOT_GROUP)
+@asset(group_name=SYNTHETIC_COT_ZEROSHOT_GROUP, compute_kind="llm")
 def synthetic_cot(
     context: AssetExecutionContext,
     config: CoTPromptConfig,
     llm_client: TogetherPromptModel,
     semeval2024_data: typing.List[SemEvalSample],
 ) -> typing.Dict[str, ChatMessageModel]:
-
+    """Generate a chain of thought explanation to resolve the provided problem"""
     semeval_labels = SemEvalLabels(
         clinical_trial=config.clinical_trial_label,
         primary_clinical_trial=config.primary_clinical_trial_label,
@@ -152,6 +144,7 @@ class ZeroShotPromptConfig(Config):
     name="prediction",
     group_name=SYNTHETIC_COT_ZEROSHOT_GROUP,
     key_prefix=[SYNTHETIC_COT_ZEROSHOT_GROUP],
+    compute_kind="llm",
 )
 def cot_zeroshot_prediction(
     context: AssetExecutionContext,
@@ -160,6 +153,7 @@ def cot_zeroshot_prediction(
     synthetic_cot: typing.Dict[str, ChatMessageModel],
     semeval2024_data: typing.List[SemEvalSample],
 ) -> typing.Dict[str, ChatMessageModel]:
+    """Add formatting instruction and continue generating"""
     chat_messages = {}
 
     for sample in semeval2024_data:
@@ -196,12 +190,15 @@ cot_zeroshot_cast_prediction = define_cast_prediction(
     name="evaluate",
     group_name=SYNTHETIC_COT_ZEROSHOT_GROUP,
     key_prefix=[SYNTHETIC_COT_ZEROSHOT_GROUP],
+    compute_kind="mlflow",
 )
 def evaluate(
     context: AssetExecutionContext,
     cast_prediction: typing.List[dict],
     prediction: typing.Dict[str, ChatMessageModel],
 ):
+    """Evaluate the experiment and log to mlflow"""
+
     mlflow.set_tracking_uri(uri="http://127.0.0.1:8894")
 
     # set the experiment id

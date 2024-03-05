@@ -11,6 +11,6 @@ from semeval.resources.llm_resource import MistralPromptTemplate, TogetherPrompt
 
 llm_client = TogetherPromptModel(
     api_key=EnvVar("TOGETHER_API_KEY"),
-    model_path=EnvVar("TOGETHER_MODEL"),
+    model_path="mistralai/Mistral-7B-Instruct-v0.2",
     prompt_template=MistralPromptTemplate(),
 )

@@ -3,7 +3,6 @@ import typing
 from dagster import (
     AssetExecutionContext,
     AssetIn,
-    AssetKey,
     MetadataValue,
     asset,
 )
@@ -20,12 +19,15 @@ def define_cast_prediction(name, group_name):
         key_prefix=[group_name],
         group_name=group_name,
         ins={"prediction": AssetIn(key_prefix=[group_name])},
+        compute_kind="formatting",
     )
     def cast_prediction(
         context: AssetExecutionContext,
         prediction: typing.Dict[str, ChatMessageModel],
         semeval2024_data: typing.List[SemEvalSample],
     ) -> typing.List[dict]:
+        """Parse the textual model reply to json"""
+
         output_parser = OutputParserConfig(element_name="answer", format="json").build()
         predictions = []
 

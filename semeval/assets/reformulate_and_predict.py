@@ -1,18 +1,10 @@
 # mypy: ignore-errors
-import os
 import time
 import typing
-from itertools import islice
 
 from dagster import (
     AssetExecutionContext,
-    AssetIn,
-    AssetOut,
-    AssetsDefinition,
-    MaterializeResult,
     Config,
-    Output,
-    multi_asset,
     MetadataValue,
     asset,
 )
