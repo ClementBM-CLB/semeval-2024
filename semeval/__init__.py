@@ -16,18 +16,18 @@ from semeval.assets import dataset_asset
 from semeval.assets import reformulate_and_predict
 from semeval.assets import synthetic_cot_zeroshot
 
+from semeval.jobs import synthetic_cot_job, reformulate_and_predict_job
+
 all_assets = load_assets_from_modules(
-    [dataset_asset, synthetic_cot_zeroshot, reformulate_and_predict]
+    [
+        dataset_asset,
+        synthetic_cot_zeroshot,
+        reformulate_and_predict,
+    ]
 )
-
-llm_job = define_asset_job(
-    name="llm_reformulate",
-    selection=AssetSelection.groups("llm"),
-)
-
 # Addition: a ScheduleDefinition the job it should run and a cron schedule of how frequently to run it
-llm_schedule = ScheduleDefinition(
-    job=llm_job,
+reformulate_and_predict_schedule = ScheduleDefinition(
+    job=reformulate_and_predict_job,
     cron_schedule="0 * * * *",  # every hour
 )
 
@@ -37,8 +37,10 @@ io_manager = FilesystemIOManager(
 
 defs = Definitions(
     assets=all_assets,
-    schedules=[llm_schedule],  # Addition: add the job to Definitions object (see below)
-    jobs=[llm_job],
+    schedules=[
+        reformulate_and_predict_schedule
+    ],  # Addition: add the job to Definitions object (see below)
+    jobs=[reformulate_and_predict_job, synthetic_cot_job],
     resources={
         "io_manager": io_manager,
         "llm_client": llm_client,
