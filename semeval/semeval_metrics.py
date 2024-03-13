@@ -1,5 +1,5 @@
 import pandas as pd
-from sklearn.metrics import f1_score
+from sklearn.metrics import confusion_matrix, f1_score
 
 
 class PromptMetrics:
@@ -18,6 +18,25 @@ class PromptMetrics:
             self.experiment_result["casted_prediction"] == "Entailment",
             average="macro",
         ).tolist()
+
+    def confusion_matrix(self):
+        cm = confusion_matrix(
+            self.experiment_result["label"] == "Entailment",
+            self.experiment_result["casted_prediction"] == "Entailment",
+        )
+        t_n, f_p, f_n, t_p = cm.ravel()
+        return {
+            "true_negative": int(t_n),
+            "false_positive": int(f_p),
+            "false_negative": int(f_n),
+            "true_positive": int(t_p),
+            "precision": (
+                0 if int(t_p + f_p) == 0 else float(t_p) / (float(t_p) + float(f_p))
+            ),
+            "recall": (
+                0 if int(t_p + f_n) == 0 else float(t_p) / (float(t_p) + float(f_n))
+            ),
+        }
 
     def accuracy(self):
         return sum(self.experiment_result["is_accurate"]) / self.total_length
@@ -50,7 +69,7 @@ class PromptMetrics:
             "prediction_contradiction_ratio": self.prediction_contradiction_ratio(),
             "label_entailment_ratio": self.label_entailment_ratio(),
             "label_contradiction_ratio": self.label_contradiction_ratio(),
-        }
+        } | self.confusion_matrix()
 
     def na_ratio(self):
         pass

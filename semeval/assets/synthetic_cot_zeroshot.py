@@ -1,6 +1,8 @@
 # mypy: ignore-errors
 import time
 import typing
+import pandas as pd
+import mlflow
 
 from dagster import (
     AssetExecutionContext,
@@ -11,8 +13,6 @@ from dagster import (
 from pydantic import Field
 from artifacts import EXPERIMENT_FOLDER
 from semeval.prompt_manager import PromptConfig
-import pandas as pd
-import mlflow
 
 from semeval.prompt_templates.labels import SemEvalLabels
 from semeval.resources.llm_resource import ChatMessageModel, TogetherPromptModel
@@ -23,7 +23,7 @@ from semeval.semeval_schemas import SemEvalSample
 SYNTHETIC_COT_ZEROSHOT_GROUP = "Synthetic_Chain_Of_Thought"
 
 
-class CoTPromptConfig(Config):
+class PromptAssetConfig(Config):
     system_prompt: str = Field(
         default="",
         description="System prompt",
@@ -44,6 +44,9 @@ class CoTPromptConfig(Config):
         default="Statement",
         description="statement label",
     )
+
+
+class CoTConfig(PromptAssetConfig):
     instruction: str = Field(
         default="Let's generate a chain of thought explanation",
         description="Chain of Thought instruction",
@@ -54,7 +57,7 @@ class CoTPromptConfig(Config):
 @asset(group_name=SYNTHETIC_COT_ZEROSHOT_GROUP, compute_kind="llm")
 def synthetic_cot(
     context: AssetExecutionContext,
-    config: CoTPromptConfig,
+    config: CoTConfig,
     llm_client: TogetherPromptModel,
     semeval2024_data: typing.List[SemEvalSample],
 ) -> typing.Dict[str, ChatMessageModel]:
@@ -68,7 +71,6 @@ def synthetic_cot(
 
     prompter = PromptConfig(prompt_type="cot").build()
     prompt_arguments = {
-        "system_prompt": None,
         "instruction": config.instruction,
         "labels": semeval_labels,
     }
@@ -76,7 +78,7 @@ def synthetic_cot(
     chat_messages = {}
 
     for sample in semeval2024_data:
-        chat_message = ChatMessageModel()
+        chat_message = ChatMessageModel(system_prompt=config.system_prompt)
 
         message = prompter.build(**(prompt_arguments | {"problem_sample": sample}))
         chat_message.add_user_message(message)
@@ -114,30 +116,12 @@ Answer in JSON format:
 Therefore, the answer is """
 
 
-class ZeroShotPromptConfig(Config):
-    system_prompt: str = Field(
-        default="",
-        description="System prompt",
-    )
-    clinical_trial_label: str = Field(
-        default="Clinical trial report",
-        description="unique ctr label",
-    )
-    primary_clinical_trial_label: str = Field(
-        default="Primary clinical trial report",
-        description="primary ctr label",
-    )
-    secondary_clinical_trial_label: str = Field(
-        default="Secondary clinical trial report",
-        description="secondary ctr label",
-    )
-    statement_label: str = Field(
-        default="Statement",
-        description="statement label",
-    )
+class FormattingConfig(PromptAssetConfig):
     instruction: str = Field(
-        default=SEMEVAL_FORMAT_INSTRUCTION, description="format instruction"
+        default=SEMEVAL_FORMAT_INSTRUCTION,
+        description="Chain of Thought instruction",
     )
+    max_tokens: int = Field(default=64, description="Max tokens generation")
 
 
 @asset(
@@ -148,7 +132,7 @@ class ZeroShotPromptConfig(Config):
 )
 def cot_zeroshot_prediction(
     context: AssetExecutionContext,
-    config: ZeroShotPromptConfig,
+    config: FormattingConfig,
     llm_client: TogetherPromptModel,
     synthetic_cot: typing.Dict[str, ChatMessageModel],
     semeval2024_data: typing.List[SemEvalSample],
@@ -160,7 +144,9 @@ def cot_zeroshot_prediction(
         chat_message = synthetic_cot[sample.key]
         chat_message.add_user_message(config.instruction)
 
-        prediction = llm_client.generate_prediction(chat_message, max_new_tokens=64)
+        prediction = llm_client.generate_prediction(
+            chat_message, max_new_tokens=config.max_tokens
+        )
         time.sleep(3)
 
         chat_message.add_model_reply(prediction)
@@ -198,11 +184,13 @@ def evaluate(
     prediction: typing.Dict[str, ChatMessageModel],
 ):
     """Evaluate the experiment and log to mlflow"""
-
     mlflow.set_tracking_uri(uri="http://127.0.0.1:8894")
 
     # set the experiment id
     mlflow.set_experiment("SemEval2024")
+
+    # asset_provenance = context.get_asset_provenance(context.asset_key)
+    # context.asset_key_for_input("cast_prediction")
 
     # start a run
     with mlflow.start_run():
@@ -246,3 +234,6 @@ def evaluate(
                 # "max_new_tokens": max_new_tokens,
             }
         )
+
+
+# config_from_files

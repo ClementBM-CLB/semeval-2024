@@ -3,10 +3,8 @@
 # Assets can belong to multiple jobs.
 
 from dagster import (
-    AssetSelection,
     Definitions,
     ScheduleDefinition,
-    define_asset_job,
     load_assets_from_modules,
     FilesystemIOManager,  # Update the imports at the top of the file to also include this
 )
